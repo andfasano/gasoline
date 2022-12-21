@@ -1,4 +1,4 @@
-package main
+package gasoline
 
 import (
 	"fmt"
@@ -20,7 +20,7 @@ const (
 
 // isoUnpack extracts all files found in the iso image
 // into the 'iso' subfolder within the temp one
-func isoUnpack(tmpPath string, isoPath string) error {
+func IsoUnpack(tmpPath string, isoPath string) error {
 	// Create tmp folder for unpacking the source iso
 	tmpIsoPath := filepath.Join(tmpPath, isoTempSubFolder)
 	err := os.Mkdir(tmpIsoPath, 0755)
@@ -94,7 +94,7 @@ func isoExtractAll(dstPath string, path string, fs filesystem.FileSystem) error 
 
 // Creates a new bootable iso image using all the files found
 // in the temporary iso folder
-func createBootableIso(tmpPath string, destIsoPath string) error {
+func CreateBootableIso(tmpPath string, destIsoPath string) error {
 
 	log.Printf("Creating the new iso %s\n", destIsoPath)
 

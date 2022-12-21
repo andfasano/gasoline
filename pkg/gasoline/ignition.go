@@ -1,4 +1,4 @@
-package main
+package gasoline
 
 import (
 	"compress/gzip"
@@ -28,7 +28,7 @@ const (
 
 // imgUnpackIgnition extracts the config.ign file contained within the
 // compressed cpio archive and saves it into the temp folder with a new name
-func imgUnpackIgnition(tmpPath string) error {
+func ImgUnpackIgnition(tmpPath string) error {
 	ignitionImgPath := filepath.Join(tmpPath, isoTempSubFolder, ignitionImagePath)
 
 	log.Println("Unpacking ignition image...")
@@ -79,7 +79,7 @@ func imgUnpackIgnition(tmpPath string) error {
 
 // Adds a binary file to the source ignition file, ad save it
 // using a default name
-func addFileToIgnitionConfig(tmpPath string, addFile string) error {
+func AddFileToIgnitionConfig(tmpPath string, addFile string) error {
 	sourceIgnition := filepath.Join(tmpPath, sourceIgnitionFile)
 	destIgnition := filepath.Join(tmpPath, updatedIgnitionFile)
 
@@ -115,7 +115,7 @@ func addFileToIgnitionConfig(tmpPath string, addFile string) error {
 			Contents: igntypes.Resource{
 				Source: ignutil.StrToPtr(dataurl.EncodeBytes(newFileData)),
 			},
-			Mode: ignutil.IntToPtr(0755),
+			Mode: ignutil.IntToPtr(0644),
 		},
 	})
 
@@ -132,7 +132,7 @@ func addFileToIgnitionConfig(tmpPath string, addFile string) error {
 }
 
 // Creats a new ignition.img containing an updated ignition file
-func imgRepackIgnition(tmpPath string) error {
+func ImgRepackIgnition(tmpPath string) error {
 	configFilePath := filepath.Join(tmpPath, updatedIgnitionFile)
 	newIgnitionImgPath := filepath.Join(tmpPath, ignitionImage)
 
@@ -179,7 +179,7 @@ func imgRepackIgnition(tmpPath string) error {
 }
 
 // Overwrites the old ignition image with the new one
-func overwriteOldIgnitionImage(tmpPath string) error {
+func OverwriteOldIgnitionImage(tmpPath string) error {
 	// Copy the updated ignition archive in the temp folder
 	srcFile := filepath.Join(tmpPath, ignitionImage)
 	dstFile := filepath.Join(tmpPath, isoTempSubFolder, ignitionImagePath)
