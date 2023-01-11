@@ -6,8 +6,8 @@ import (
 	"github.com/andfasano/gasoline/pkg/gasoline"
 )
 
-// Method #1: adds the binary file to the ignition config file contained within the iso
-func AddFileToIgnitionConfig(sourceIso string, addFile string, destIsoPath string, keepWorkDir bool) error {
+// Method #2: appends the binary file to the ignition image contained within the iso
+func AppendFileToIgnitionImg(sourceIso string, addFile string, destIsoPath string, keepWorkDir bool) error {
 	tmpPath, err := os.MkdirTemp("", "gasoline")
 	if err != nil {
 		return err
@@ -22,29 +22,18 @@ func AddFileToIgnitionConfig(sourceIso string, addFile string, destIsoPath strin
 		return err
 	}
 
-	err = gasoline.ImgUnpackIgnition(tmpPath)
+	// Step 2: Append file and create a new ignition.img
+	err = gasoline.ImgIgnitionAppend(tmpPath, addFile)
 	if err != nil {
 		return err
 	}
 
-	// Step 2: Add the binary file to a new ignition config file,
-	//         and generate a new compressed cpio archive
-	err = gasoline.AddFileToIgnitionConfig(tmpPath, addFile)
-	if err != nil {
-		return err
-	}
-
-	err = gasoline.ImgRepackIgnition(tmpPath)
-	if err != nil {
-		return err
-	}
-
+	// Step 3: Generate a new bootable iso using the new ignition.img
 	err = gasoline.OverwriteOldIgnitionImage(tmpPath)
 	if err != nil {
 		return err
 	}
 
-	// Step 3: Generate a new bootable iso
 	err = gasoline.CreateBootableIso(tmpPath, destIsoPath)
 	if err != nil {
 		return err

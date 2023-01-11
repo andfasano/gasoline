@@ -3,8 +3,8 @@ package gasoline
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 
@@ -30,7 +30,7 @@ func IsoUnpack(tmpPath string, isoPath string) error {
 
 	log.Printf("Unpacking %s in the temp folder %s\n", isoPath, tmpIsoPath)
 
-	disk, err := diskfs.OpenWithMode(isoPath, diskfs.ReadOnly)
+	disk, err := diskfs.Open(isoPath, diskfs.WithOpenMode(diskfs.ReadOnly))
 	if err != nil {
 		return err
 	}
@@ -92,15 +92,54 @@ func isoExtractAll(dstPath string, path string, fs filesystem.FileSystem) error 
 	return nil
 }
 
+func fileExists(name string) (bool, error) {
+	if _, err := os.Stat(name); os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func efiLoadSectors(workDir string) (uint16, error) {
+	efiStat, err := os.Stat(filepath.Join(workDir, "images/efiboot.img"))
+	if err != nil {
+		return 0, err
+	}
+	return uint16(math.Ceil(float64(efiStat.Size()) / 2048)), nil
+}
+
+func haveBootFiles(workDir string) (bool, error) {
+	files := []string{"isolinux/boot.cat", "isolinux/isolinux.bin", "images/efiboot.img"}
+	for _, f := range files {
+		name := filepath.Join(workDir, f)
+		if exists, err := fileExists(name); err != nil {
+			return false, err
+		} else if !exists {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
 // Creates a new bootable iso image using all the files found
 // in the temporary iso folder
 func CreateBootableIso(tmpPath string, destIsoPath string) error {
 
 	log.Printf("Creating the new iso %s\n", destIsoPath)
 
+	volumeLabel := "rhcos-413.86.202212131234-0"
+	workDir := filepath.Join(tmpPath, isoTempSubFolder)
+
 	os.Remove(destIsoPath)
 
-	d, err := diskfs.Create(destIsoPath, 8712192, diskfs.Raw)
+	folderSize, err := FolderSize(workDir)
+	if err != nil {
+		return err
+	}
+
+	d, err := diskfs.Create(destIsoPath, folderSize, diskfs.Raw, diskfs.SectorSizeDefault)
 	if err != nil {
 		return err
 	}
@@ -109,44 +148,11 @@ func CreateBootableIso(tmpPath string, destIsoPath string) error {
 	fspec := disk.FilesystemSpec{
 		Partition:   0,
 		FSType:      filesystem.TypeISO9660,
-		VolumeLabel: "rhcos-412.86.202209302317-0",
+		VolumeLabel: volumeLabel,
+		WorkDir:     workDir,
 	}
 	fs, err := d.CreateFilesystem(fspec)
 	if err != nil {
-		return err
-	}
-
-	filesPath := filepath.Join(tmpPath, isoTempSubFolder)
-
-	// Add all files to the ISO
-	addFileToISO := func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		p, err := filepath.Rel(filesPath, path)
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() {
-			return fs.Mkdir(p)
-		}
-
-		content, err := ioutil.ReadFile(path)
-		if err != nil {
-			return err
-		}
-
-		rw, err := fs.OpenFile(p, os.O_CREATE|os.O_RDWR)
-		if err != nil {
-			return err
-		}
-
-		_, err = rw.Write(content)
-		return err
-	}
-	if err := filepath.Walk(filesPath, addFileToISO); err != nil {
 		return err
 	}
 
@@ -156,8 +162,18 @@ func CreateBootableIso(tmpPath string, destIsoPath string) error {
 	}
 
 	options := iso9660.FinalizeOptions{
-		VolumeIdentifier: "rhcos-412.86.202209302317-0",
-		ElTorito: &iso9660.ElTorito{
+		RockRidge:        true,
+		VolumeIdentifier: volumeLabel,
+	}
+
+	if haveFiles, err := haveBootFiles(workDir); err != nil {
+		return err
+	} else if haveFiles {
+		efiSectors, err := efiLoadSectors(workDir)
+		if err != nil {
+			return err
+		}
+		options.ElTorito = &iso9660.ElTorito{
 			BootCatalog: "isolinux/boot.cat",
 			Entries: []*iso9660.ElToritoEntry{
 				{
@@ -171,10 +187,46 @@ func CreateBootableIso(tmpPath string, destIsoPath string) error {
 					Platform:  iso9660.EFI,
 					Emulation: iso9660.NoEmulation,
 					BootFile:  "images/efiboot.img",
+					LoadSize:  efiSectors,
 				},
 			},
-		},
+		}
+	} else if exists, _ := fileExists(filepath.Join(workDir, "images/efiboot.img")); exists {
+		// Creating an ISO with EFI boot only
+		efiSectors, err := efiLoadSectors(workDir)
+		if err != nil {
+			return err
+		}
+		if exists, _ := fileExists(filepath.Join(workDir, "boot.catalog")); !exists {
+			return fmt.Errorf("missing boot.catalog file")
+		}
+		options.ElTorito = &iso9660.ElTorito{
+			BootCatalog:     "boot.catalog",
+			HideBootCatalog: true,
+			Entries: []*iso9660.ElToritoEntry{
+				{
+					Platform:  iso9660.EFI,
+					Emulation: iso9660.NoEmulation,
+					BootFile:  "images/efiboot.img",
+					LoadSize:  efiSectors,
+				},
+			},
+		}
 	}
 
 	return iso.Finalize(options)
+}
+
+func FolderSize(path string) (int64, error) {
+	var size int64
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return err
+	})
+	return size, err
 }
