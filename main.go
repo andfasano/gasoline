@@ -71,7 +71,7 @@ func runAppendIngitionImg(args []string) {
 		destIsoPath = args[3]
 	}
 
-	err := commands.AppendFileToIgnitionImg(sourceIso, addFile, destIsoPath, true)
+	err := commands.AppendFileToIgnitionImg(sourceIso, addFile, destIsoPath, false)
 	if err != nil {
 		log.Fatal(err)
 	}
